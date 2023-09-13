@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenStreetMap Example</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""/>
+    <!-- Make sure you put this AFTER Leaflet's CSS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""></script>
+
+    <!-- Add Leaflet Draw CSS and JS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+    <style>#map { height: 650px; }</style>
+</head>
+<body>
+    <h1>Map is here</h1>
+    <div id="map"></div>
+    <!-- Add a toolbar for drawing geofences -->
+    <div id="toolbar">
+        <a href="#" id="start-drawing">Start Drawing</a>
+        <a href="#" id="stop-drawing" style="display: none;">Stop Drawing</a>
+        <a href="#" id="clear-fence" style="display: none;">Clear Fence</a>
+    </div>
+</body>
+<script>
+    let map = L.map('map');
+    map.setView([12.985, 77.6057], 13);
+
+    //This is the ugly default look
+
+    // L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    //     maxZoom: 19,
+    //     attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    // }).addTo(map);
+
+    const mapboxAccessToken = 'pk.eyJ1Ijoic2FuZGVlcC1rdW0iLCJhIjoiY2xtaGpuaHZ2MnVhOTNlbXhkcHNxODRqdiJ9.VEsQyQvsmnPutLKxXRZR6A';
+
+    L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token=' + mapboxAccessToken, {
+        id: 'mapbox/streets-v11',
+        tileSize: 512,
+        zoomOffset: -1,
+        accessToken: mapboxAccessToken
+    }).addTo(map);
+
+    const greenIcon = L.icon({
+        iconUrl: 'loc.svg',
+        iconSize: [38, 95], // size of the icon
+        shadowSize: [50, 64], // size of the shadow
+        iconAnchor: [22, 94], // point of the icon which will correspond to marker's location
+        shadowAnchor: [4, 62], // the same for the shadow
+        popupAnchor: [-3, -76] // point from which the popup should open relative to the iconAnchor
+    });
+
+    let markers = [];
+    let polyline;
+    let drawingMode = false;
+
+    // Function to create a draggable marker when clicking on the map
+    map.on('click', function(e) {
+        const lat = e.latlng.lat;
+        const lng = e.latlng.lng;
+        
+        if (!drawingMode) {
+            createMarker(lat, lng);
+        }
+    });
+
+    function createMarker(lat, lng) {
+        const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+        markers.push(marker);
+
+        // Event handler for marker click
+        marker.on('click', function() {
+            removeMarker(marker);
+        });
+
+        // Event handler for marker dragend
+        marker.on('dragend', function(e) {
+            updatePolyline();
+        });
+
+        if (!map.getBounds().contains([lat, lng])) {
+            map.panTo([lat, lng]);
+        }
+
+        // Create/update the polyline when there are at least 2 markers
+        if (markers.length >= 2) {
+            updatePolyline();
+        }
+    }
+
+    // Function to update the polyline
+    function updatePolyline() {
+        if (polyline) {
+            map.removeLayer(polyline);
+        }
+
+        if (markers.length >= 2) {
+            const latLngs = markers.map(marker => marker.getLatLng());
+            polyline = L.polyline(latLngs, { color: 'red' }).addTo(map);
+        }
+    }
+
+    // Function to remove a marker from the map
+    function removeMarker(marker) {
+        map.removeLayer(marker);
+        const index = markers.indexOf(marker);
+        if (index !== -1) {
+            markers.splice(index, 1);
+            updatePolyline();
+        }
+    }
+
+    // Enable Leaflet Draw
+    const drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    const drawControl = new L.Control.Draw({
+        edit: {
+            featureGroup: drawnItems
+        },
+        draw: {
+            polygon: true,
+            polyline: false,
+            rectangle: true,
+            circle: false,
+            marker: false
+        }
+    });
+
+    // Event listeners for when a shape is drawn or edited
+    map.on('draw:created', function (e) {
+        const layer = e.layer;
+        drawnItems.addLayer(layer);
+    });
+
+    map.on('draw:edited', function (e) {
+        // You can handle editing of the drawn shapes here
+    });
+
+    // Start drawing mode when a button is clicked
+    document.getElementById('start-drawing').addEventListener('click', function () {
+        if (!drawingMode) {
+            map.addControl(drawControl);
+            drawnItems.clearLayers();
+            drawingMode = true;
+            document.getElementById('start-drawing').style.display = 'none';
+            document.getElementById('stop-drawing').style.display = 'inline';
+            document.getElementById('clear-fence').style.display = 'inline';
+        }
+    });
+
+    // Stop drawing mode
+    document.getElementById('stop-drawing').addEventListener('click', function () {
+        if (drawingMode) {
+            map.removeControl(drawControl);
+            drawingMode = false;
+            document.getElementById('start-drawing').style.display = 'inline';
+            document.getElementById('stop-drawing').style.display = 'none';
+            document.getElementById('clear-fence').style.display = 'none';
+        }
+    });
+
+    // Clear the geofence
+    document.getElementById('clear-fence').addEventListener('click', function () {
+        drawnItems.clearLayers();
+    });
+
+    // Geolocation code (unchanged)
+    navigator.geolocation.watchPosition(success, error);
+
+    function success(pos) {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        if (markers.length > 0) {
+            markers[0].setLatLng([lat, lng]);
+            map.setView([lat, lng]);
+            updatePolyline();
+        } else {
+            const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+            markers.push(marker);
+            map.setView([lat, lng]);
+        }
+    }
+
+    function error(err) {
+        if (err.code === 1) {
+            console.log("hey");
+            alert("Please allow geolocation access");
+        } else {
+            alert("Cannot get current location");
+        }
+    }
+</script>
+</html>
